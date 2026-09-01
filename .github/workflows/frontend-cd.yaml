@@ -3,7 +3,7 @@ name: Frontend Continuous Deployment
 on:
   push:
     branches:
-      - main
+      - master
     paths:
       - "starter/frontend/**"
       - ".github/workflows/frontend-cd.yaml"
@@ -44,7 +44,6 @@ jobs:
       - name: Run lint
         run: npm run lint
 
-
   test:
     name: Test Frontend
     runs-on: ubuntu-latest
@@ -70,7 +69,6 @@ jobs:
       - name: Run tests
         run: CI=true npm test -- --watchAll=false
 
-
   build:
     name: Build and Push Frontend Image
     runs-on: ubuntu-latest
@@ -88,7 +86,7 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1
+          aws-region: ${{ env.AWS_REGION }}
 
       - name: Verify AWS credentials
         run: aws sts get-caller-identity
@@ -119,7 +117,6 @@ jobs:
         run: |
           docker push "${ECR_REGISTRY}/frontend:${IMAGE_TAG}"
 
-
   deploy:
     name: Deploy Frontend to EKS
     runs-on: ubuntu-latest
@@ -136,7 +133,7 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1
+          aws-region: ${{ env.AWS_REGION }}
 
       - name: Get AWS Account ID
         id: aws-account
@@ -154,7 +151,7 @@ jobs:
         run: |
           kubectl get nodes
 
-      - name: Prepare Kubernetes manifests
+      - name: Prepare and deploy Kubernetes manifests
         env:
           ECR_REGISTRY: ${{ steps.aws-account.outputs.account_id }}.dkr.ecr.us-east-1.amazonaws.com
         run: |
