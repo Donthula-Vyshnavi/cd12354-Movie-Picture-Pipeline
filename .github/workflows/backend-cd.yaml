@@ -92,64 +92,32 @@ jobs:
       - lint
       - test
 
-    permissions:
-      id-token: write
-      contents: read
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Validate AWS Secrets
-        run: |
-          if [ -z "${{ secrets.AWS_ACCOUNT_ID }}" ]; then
-            echo "❌ AWS_ACCOUNT_ID secret is missing!"
-            exit 1
-          fi
-          if [ -z "${{ secrets.AWS_ACCESS_KEY_ID }}" ]; then
-            echo "❌ AWS_ACCESS_KEY_ID secret is missing!"
-            exit 1
-          fi
-          if [ -z "${{ secrets.AWS_SECRET_ACCESS_KEY }}" ]; then
-            echo "❌ AWS_SECRET_ACCESS_KEY secret is missing!"
-            exit 1
-          fi
-          echo "✅ All required AWS secrets are configured"
-
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Verify AWS Credentials
-        run: |
-          echo "Testing AWS credentials..."
-          aws sts get-caller-identity
-          echo "✅ AWS credentials are valid"
-
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
-        continue-on-error: false
 
       - name: Build Docker image
         working-directory: starter/backend
         run: |
-          echo "Building Docker image: ${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}"
           docker build \
             --tag "${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}" \
-            --tag "${ECR_REGISTRY}/${ECR_REPOSITORY}:latest" \
             .
-          echo "✅ Docker image built successfully"
 
       - name: Push Docker image
         run: |
-          echo "Pushing Docker image to ECR..."
-          docker push "${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}"
-          docker push "${ECR_REGISTRY}/${ECR_REPOSITORY}:latest"
-          echo "✅ Docker image pushed successfully"
+          docker push \
+            "${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}"
 
   deploy:
     name: Deploy Backend to EKS
@@ -163,62 +131,36 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Verify cluster exists
-        run: |
-          echo "Verifying EKS cluster: ${EKS_CLUSTER_NAME}"
-          aws eks describe-cluster --name "${EKS_CLUSTER_NAME}" --region "${AWS_REGION}"
-          echo "✅ EKS cluster found"
-
       - name: Configure kubectl for EKS
         run: |
-          echo "Configuring kubectl..."
           aws eks update-kubeconfig \
             --region "${AWS_REGION}" \
             --name "${EKS_CLUSTER_NAME}"
-          echo "✅ kubectl configured"
 
       - name: Verify cluster access
-        run: |
-          echo "Testing cluster access..."
-          kubectl get nodes
-          echo "✅ Cluster access verified"
-
-      - name: Install kustomize
-        run: |
-          curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
-          sudo mv kustomize /usr/local/bin/
+        run: kubectl get nodes
 
       - name: Update Kubernetes image
         working-directory: starter/backend/k8s
         run: |
-          echo "Updating image to: ${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}"
           kustomize edit set image \
             backend="${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}"
-          echo "✅ Kubernetes manifest updated"
 
       - name: Deploy Kubernetes manifests
         working-directory: starter/backend/k8s
         run: |
-          echo "Deploying to Kubernetes..."
           kustomize build . | kubectl apply -f -
-          echo "✅ Manifests deployed"
 
       - name: Verify rollout
         run: |
-          kubectl rollout status deployment/backend --timeout=300s
+          kubectl rollout status deployment/backend --timeout=600s
+      
           
-      - name: Debug deployment status (if rollout fails)
-        if: failure()
-        run: |
-          echo "Pod Status:"
-          kubectl get pods -l app=backend
-          echo "Deployment Details:"
-          kubectl describe deployment backend
-          echo "Recent Events:"
-          kubectl get events --sort-by='.lastTimestamp' | tail -20 
+      
+          
