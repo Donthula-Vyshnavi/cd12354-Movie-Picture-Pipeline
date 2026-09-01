@@ -36,22 +36,29 @@ deploy:
       run: |
         kustomize build . | kubectl apply -f -
 
-    - name: Verify rollout
+    - name: Wait for rollout with debugging
       run: |
-        kubectl rollout status deployment/backend --timeout=600s
-      continue-on-error: true  # Don't fail immediately, get diagnostics first
-
-    - name: Debug deployment status
-      if: failure()
-      run: |
-        echo "=== Deployment Status ==="
-        kubectl get deployment backend -o wide
-        echo ""
-        echo "=== Pod Status ==="
-        kubectl get pods -l app=backend -o wide
-        echo ""
-        echo "=== Pod Events ==="
-        kubectl describe pods -l app=backend
-        echo ""
-        echo "=== Pod Logs ==="
-        kubectl logs -l app=backend --tail=50 --all-containers=true
+        echo "Waiting for deployment to rollout..."
+        if ! kubectl rollout status deployment/backend --timeout=600s; then
+          echo ""
+          echo "❌ Rollout timed out. Collecting diagnostics..."
+          echo ""
+          echo "=== DEPLOYMENT STATUS ==="
+          kubectl get deployment backend -o wide
+          echo ""
+          echo "=== POD STATUS ==="
+          kubectl get pods -l app=backend -o wide
+          echo ""
+          echo "=== POD DESCRIPTIONS ==="
+          kubectl describe pods -l app=backend
+          echo ""
+          echo "=== AVAILABLE NODES AND CAPACITY ==="
+          kubectl describe nodes | grep -A 5 "Allocated resources"
+          echo ""
+          echo "=== RECENT EVENTS ==="
+          kubectl get events --sort-by='.lastTimestamp' | tail -20
+          echo ""
+          echo "=== POD LOGS (Backend Container) ==="
+          kubectl logs -l app=backend --tail=100 --all-containers=true 2>/dev/null || echo "No logs available yet"
+          exit 1
+        fi
