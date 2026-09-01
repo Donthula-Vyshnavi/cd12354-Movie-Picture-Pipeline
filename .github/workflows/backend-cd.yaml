@@ -211,6 +211,14 @@ jobs:
 
       - name: Verify rollout
         run: |
-          echo "Waiting for deployment to rollout..."
-          kubectl rollout status deployment/backend --timeout=600s
-          echo "✅ Deployment successful"
+          kubectl rollout status deployment/backend --timeout=300s
+          
+      - name: Debug deployment status (if rollout fails)
+        if: failure()
+        run: |
+          echo "Pod Status:"
+          kubectl get pods -l app=backend
+          echo "Deployment Details:"
+          kubectl describe deployment backend
+          echo "Recent Events:"
+          kubectl get events --sort-by='.lastTimestamp' | tail -20 
