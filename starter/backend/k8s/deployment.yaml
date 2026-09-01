@@ -1,19 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  labels:
+    app: backend
 spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: backend
   strategy:
     type: RollingUpdate
     rollingUpdate:
-      maxSurge: 1           # Max new pods while old exist
-      maxUnavailable: 0     # Keep at least 1 pod running
+      maxSurge: 1
+      maxUnavailable: 0
   template:
+    metadata:
+      labels:
+        app: backend
     spec:
       containers:
       - name: backend
+        image: backend  # This will be updated by kustomize
+        ports:
+        - containerPort: 5000
         livenessProbe:
-          initialDelaySeconds: 30  # Give app time to start
+          initialDelaySeconds: 30
           timeoutSeconds: 5
           periodSeconds: 10
           failureThreshold: 3
+          httpGet:
+            path: /health
+            port: 5000
         readinessProbe:
           initialDelaySeconds: 10
           timeoutSeconds: 5
           periodSeconds: 5
+          httpGet:
+            path: /health
+            port: 5000
