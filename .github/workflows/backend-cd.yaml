@@ -6,13 +6,16 @@ on:
       - main
     paths:
       - "starter/backend/**"
+      - ".github/workflows/backend-cd.yaml"
+
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 env:
   AWS_REGION: us-east-1
-  ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com
   ECR_REPOSITORY: backend
-  EKS_CLUSTER_NAME: ${{ secrets.EKS_CLUSTER_NAME }}
   IMAGE_TAG: ${{ github.sha }}
 
 jobs:
@@ -33,22 +36,15 @@ jobs:
         with:
           python-version: "3.10"
 
-      - name: Restore pip cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-backend-${{ hashFiles('starter/backend/Pipfile.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-backend-
-
-      - name: Install pipenv
-        run: python -m pip install pipenv
-
       - name: Install dependencies
-        run: pipenv install --dev
+        run: |
+          python -m pip install --upgrade pip
+          pip install pipenv
+          pipenv install --dev
 
       - name: Run lint
-        run: pipenv run lint
+        run: |
+          pipenv run flake8 .
 
   test:
     name: Test Backend
@@ -67,22 +63,15 @@ jobs:
         with:
           python-version: "3.10"
 
-      - name: Restore pip cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-backend-${{ hashFiles('starter/backend/Pipfile.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-backend-
-
-      - name: Install pipenv
-        run: python -m pip install pipenv
-
       - name: Install dependencies
-        run: pipenv install --dev
+        run: |
+          python -m pip install --upgrade pip
+          pip install pipenv
+          pipenv install --dev
 
       - name: Run tests
-        run: pipenv run test
+        run: |
+          pipenv run pytest
 
   build:
     name: Build and Push Backend Image
@@ -97,27 +86,38 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v6
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: Verify AWS credentials
+        run: aws sts get-caller-identity
+
+      - name: Get AWS Account ID
+        id: aws-account
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          echo "account_id=$ACCOUNT_ID" >> "$GITHUB_OUTPUT"
+
       - name: Login to Amazon ECR
-        id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
       - name: Build Docker image
         working-directory: starter/backend
+        env:
+          ECR_REGISTRY: ${{ steps.aws-account.outputs.account_id }}.dkr.ecr.us-east-1.amazonaws.com
         run: |
           docker build \
-            --tag "${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}" \
+            --tag "${ECR_REGISTRY}/backend:${IMAGE_TAG}" \
             .
 
       - name: Push Docker image
+        env:
+          ECR_REGISTRY: ${{ steps.aws-account.outputs.account_id }}.dkr.ecr.us-east-1.amazonaws.com
         run: |
-          docker push \
-            "${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}"
+          docker push "${ECR_REGISTRY}/backend:${IMAGE_TAG}"
 
   deploy:
     name: Deploy Backend to EKS
@@ -131,33 +131,59 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v6
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: Get AWS Account ID
+        id: aws-account
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          echo "account_id=$ACCOUNT_ID" >> "$GITHUB_OUTPUT"
+
       - name: Configure kubectl for EKS
         run: |
           aws eks update-kubeconfig \
-            --region "${AWS_REGION}" \
-            --name "${EKS_CLUSTER_NAME}"
+            --region us-east-1 \
+            --name "${{ secrets.EKS_CLUSTER_NAME }}"
 
       - name: Verify cluster access
-        run: kubectl get nodes
-
-      - name: Update Kubernetes image
-        working-directory: starter/backend/k8s
         run: |
-          kustomize edit set image \
-            backend="${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}"
+          kubectl get nodes
 
-      - name: Deploy Kubernetes manifests
-        working-directory: starter/backend/k8s
+      - name: Prepare and deploy Kubernetes manifests
+        env:
+          ECR_REGISTRY: ${{ steps.aws-account.outputs.account_id }}.dkr.ecr.us-east-1.amazonaws.com
         run: |
-          kustomize build . | kubectl apply -f -
+          TEMP_K8S_DIR="$(mktemp -d)"
+
+          cp starter/backend/k8s/deployment.yaml "$TEMP_K8S_DIR/"
+          cp starter/backend/k8s/service.yaml "$TEMP_K8S_DIR/"
+
+          cat > "$TEMP_K8S_DIR/kustomization.yaml" <<EOF
+          apiVersion: kustomize.config.k8s.io/v1beta1
+          kind: Kustomization
+
+          resources:
+            - deployment.yaml
+            - service.yaml
+
+          images:
+            - name: backend
+              newName: ${ECR_REGISTRY}/backend
+              newTag: ${IMAGE_TAG}
+
+          namespace: default
+          EOF
+
+          kubectl apply -k "$TEMP_K8S_DIR"
 
       - name: Verify rollout
         run: |
           kubectl rollout status deployment/backend --timeout=180s
-          
+
+      - name: Show backend service
+        run: |
+          kubectl get service backend -o wide
