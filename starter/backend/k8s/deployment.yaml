@@ -1,21 +1,19 @@
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: backend
-  labels:
-    app: backend
 spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: backend
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1           # Max new pods while old exist
+      maxUnavailable: 0     # Keep at least 1 pod running
   template:
-    metadata:
-      labels:
-        app: backend
     spec:
       containers:
-        - name: backend
-          image: backend
-          ports:
-            - containerPort: 5000
+      - name: backend
+        livenessProbe:
+          initialDelaySeconds: 30  # Give app time to start
+          timeoutSeconds: 5
+          periodSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          initialDelaySeconds: 10
+          timeoutSeconds: 5
+          periodSeconds: 5
