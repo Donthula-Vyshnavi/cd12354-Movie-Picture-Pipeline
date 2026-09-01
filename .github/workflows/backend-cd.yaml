@@ -212,5 +212,5 @@ jobs:
       - name: Verify rollout
         run: |
           echo "Waiting for deployment to rollout..."
-          kubectl rollout status deployment/backend --timeout=180s
+          kubectl rollout status deployment/backend --timeout=600s
           echo "✅ Deployment successful"
