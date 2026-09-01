@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 import React, { useState, useEffect } from 'react';
+=======
+import React, { useEffect, useState } from 'react';
+>>>>>>> 62849ae (Fix movie list API response handling)
 import PropTypes from 'prop-types';
 import axios from 'axios';
 
@@ -6,9 +10,20 @@ function MovieList({ onMovieClick }) {
   const [movies, setMovies] = useState([]);
 
   useEffect(() => {
+<<<<<<< HEAD
     axios.get(`${process.env.REACT_APP_MOVIE_API_URL}/movies`).then((response) => {
       setMovies(response.data.movies);
     });
+=======
+    axios
+      .get(`${process.env.REACT_APP_MOVIE_API_URL}/movies`)
+      .then((response) => {
+        setMovies(response.data.movies);
+      })
+      .catch((error) => {
+        console.error('Error fetching movies:', error);
+      });
+>>>>>>> 62849ae (Fix movie list API response handling)
   }, []);
 
   return (
