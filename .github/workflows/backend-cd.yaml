@@ -147,6 +147,22 @@ jobs:
             --name "${EKS_CLUSTER_NAME}" \
             --no-cli-pager
 
+      - name: Update aws-auth ConfigMap
+        run: |
+          cat <<EOF | kubectl apply -f -
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: aws-auth
+            namespace: kube-system
+          data:
+            mapUsers: |
+              - userarn: arn:aws:iam::628916586612:user/github-action-user
+                username: github-action-user
+                groups:
+                  - system:masters
+          EOF
+
       - name: Verify cluster access
         run: |
           kubectl get nodes
