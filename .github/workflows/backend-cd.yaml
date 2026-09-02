@@ -179,16 +179,16 @@ jobs:
           kubectl set image deployment/backend \
             backend="${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}"
 
-            - name: Verify rollout
-       run: |
+      - name: Verify rollout
+        run: |
           kubectl rollout status deployment/backend --timeout=1200s
 
       - name: Verify deployment
         run: |
-          kubectl get deployment backend 
+          kubectl get deployment backend
           kubectl get pods -o wide
           kubectl get service backend
-          
+
       - name: Debug deployment if failed
         if: failure()
         run: |
@@ -197,5 +197,4 @@ jobs:
           echo "=== Pod Events ==="
           kubectl describe pods -l app=backend
           echo "=== Pod Logs ==="
-          kubectl logs -l app=backend --tail=50 --all-containers=true 
-      
+          kubectl logs -l app=backend --tail=50 --all-containers=true
