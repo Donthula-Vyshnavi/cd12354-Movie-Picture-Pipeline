@@ -23,4 +23,4 @@ COPY . /app
 
 EXPOSE 5000
 
-CMD ["uwsgi", "--http", ":5000", "--master", "--enable-threads", "--module", "starter.backend:app"]
+CMD ["uwsgi", "--http", ":5000", "--master", "--enable-threads", "--module", "app:app"]
